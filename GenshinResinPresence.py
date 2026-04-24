@@ -29,6 +29,8 @@ CLIENT_ID = USERS_DATA["CLIENT_ID"]
 
 current_resin = 0
 
+refresh_event = threading.Event()
+
 async def main():
     pi_user = Details.User(uid, ltmid_v2, ltuid_v2, ltoken_v2)
 
@@ -92,7 +94,7 @@ async def main():
             instance=True
         )
 
-        await asyncio.sleep(next_resin_in)
+        await interruptible_sleep(next_resin_in)
 
 
 def show_error_popup(text, title="エラー", open=None):
@@ -101,6 +103,17 @@ def show_error_popup(text, title="エラー", open=None):
     if not open is None:
         if result == 1:
             os.startfile(open)
+
+async def wait_with_refresh(seconds):
+    seconds = max(1, int(seconds))
+
+    for _ in range(seconds):
+        if refresh_event.is_set():
+            refresh_event.clear()
+            return False  # 手動更新
+        await asyncio.sleep(1)
+
+    return True  # 時間経過
 
 
 def get_base_dir():
@@ -115,6 +128,7 @@ class taskTray:
 
         menu = Menu(
             MenuItem('GenshinImpactを起動', self.LaunchShortcut),
+            MenuItem("更新", self.RefreshNow),
             MenuItem('終了', self.ExitProgram),
         )
 
@@ -146,9 +160,22 @@ class taskTray:
                 daemon=True
             ).start()
 
+    def RefreshNow(self, icon, item):
+        refresh_event.set()
+
     def ExitProgram(self, icon, item):
         self.icon.stop()
 
+
+stop_event = threading.Event()
+
+async def interruptible_sleep(seconds):
+    for _ in range(max(1, int(seconds))):
+        if stop_event.is_set():
+            stop_event.clear()
+            return False
+        await asyncio.sleep(1)
+    return True
 
 def run_async_main():
     asyncio.run(main())
